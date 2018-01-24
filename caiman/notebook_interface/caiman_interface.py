@@ -14,6 +14,7 @@ import os
 import numpy as np
 
 from caiman_easy import *
+#from event_logic import *
 
 '''
 Interface Code Developed by Brandon Brown in the Khakh Lab at UCLA
@@ -188,16 +189,16 @@ def run_mc_ui(_):
 	mc_params = {
 		'dview': context.dview, #refers to ipyparallel object for parallelism
 		'max_shifts':(2, 2),  # maximum allow rigid shift; default (2,2)
-		'niter_rig':1, 
+		'niter_rig':1,
 		'splits_rig':20,
 		'num_splits_to_process_rig':None,
 		'strides':(24,24), #default 48,48
 		'overlaps':(12,12), #default 12,12
 		'splits_els':28,
 		'num_splits_to_process_els':[14, None],
-		'upsample_factor_grid':4, 
+		'upsample_factor_grid':4,
 		'max_deviation_rigid':2,
-		'shifts_opencv':True, 
+		'shifts_opencv':True,
 		'nonneg_movie':True,
 		'gSig_filt' : [int(gSigFilter_widget.value)] * 2, #default 9,9  best 6,6,
 	}
@@ -212,7 +213,7 @@ def run_mc_ui(_):
 	print("Motion Correction DONE!")
 	print("Output file(s): ")
 	[print(x) for x in mc_results]
-		
+
 run_mc_btn.on_click(run_mc_ui)
 major_col = widgets.VBox()
 major_col.children = [file_box,is_batch_widget,settings, run_mc_btn]
@@ -362,12 +363,31 @@ min_pnr_widget = widgets.IntSlider(
 	tooltip='Minimum Peak-to-Noise Ratio'
 )
 
+deconv_flag_widget = widgets.Checkbox(
+	value=False,
+	description='Run Deconvolution',
+	disabled=False,
+	tooltip='The oasis deconvolution algorithm will run along with CNMF',
+	layout=widgets.Layout(width="30%")
+)
+
+save_movie_widget = widgets.Checkbox(
+	value=False,
+	description='Save Denoised Movie (.avi)',
+	disabled=False,
+	tooltip='Saves a background-substracted and denoised movie',
+	layout=widgets.Layout(width="30%")
+)
+
 #min_corr, min_pnr
 basic_row3 = widgets.HBox()
 basic_row3.children = [min_corr_widget, min_pnr_widget]
 
+basic_row4 = widgets.HBox()
+basic_row4.children = [deconv_flag_widget, save_movie_widget]
+
 cnmf_basic_settings = widgets.VBox()
-cnmf_basic_settings.children = [basic_row0,basic_row1,basic_row2, basic_row3]
+cnmf_basic_settings.children = [basic_row0,basic_row1,basic_row2, basic_row3, basic_row4]
 
 cnmf_advanced_settings = widgets.VBox()
 cnmf_advanced_settings.children = [widgets.Label(value='Under Construction')]
@@ -397,36 +417,36 @@ def run_cnmf_ui(_):
 	K = int(k_widget.value)
 	gSig = (int(gSig_widget.value),) * 2
 	gSiz = (int(gSiz_widget.value),) * 2
-	
+
 	cnmf_params = {
-		'n_processes':context.n_processes, 
-		'method_init':'corr_pnr', 
-		'k':K, 
-		'gSig':gSig, 
-		'gSiz':gSiz, 
+		'n_processes':context.n_processes,
+		'method_init':'corr_pnr',
+		'k':K,
+		'gSig':gSig,
+		'gSiz':gSiz,
 		'merge_thresh':0.8,
-		'p':1, 
-		'dview':context.dview, 
+		'p':1,
+		'dview':context.dview,
 		'tsub':1 if is_patches else ds_temporal, # x if not patches else 1 #THIS IS INTEGER NOT FLOAT
 		'ssub':1 if is_patches else ds_spatial,
 		'p_ssub': ds_spatial if is_patches else None,  #THIS IS INTEGER NOT FLOAT
 		'p_tsub': ds_temporal if is_patches else None,
-		'Ain':None, 
+		'Ain':None,
 		'rf':(40, 40) if is_patches else None, #enables patches; was 25x25
 		'stride':(20, 20), #was 15,15
-		'only_init_patch': True, 
-		'gnb':16, 
-		'nb_patch':16, 
+		'only_init_patch': True,
+		'gnb':16,
+		'nb_patch':16,
 		'method_deconvolution':'oasis',
-		'low_rank_background': True, 
-		'update_background_components': False, 
+		'low_rank_background': True,
+		'update_background_components': False,
 		'min_corr':min_corr,
-		'min_pnr':min_pnr, 
-		'normalize_init': False, 
+		'min_pnr':min_pnr,
+		'normalize_init': False,
 		'deconvolve_options_init': None,
-		'ring_size_factor':1.5, 
+		'ring_size_factor':1.5,
 		'center_psf': True,
-		'deconv_flag': False,
+		'deconv_flag': bool(deconv_flag_widget.value),
 		'simultaneously': False,
 		'del_duplicates':True
 	}
@@ -435,7 +455,7 @@ def run_cnmf_ui(_):
 	#RUN CNMF-E
 	#get original movie as mmap
 	filename=os.path.split(context.working_cnmf_file)[-1]
-	# = 
+	# =
 	Yr, dims, T = load_memmap(os.path.join(os.path.split(context.working_cnmf_file)[0],filename))
 	#get correlation image
 	context.YrDT = Yr, dims, T
@@ -446,24 +466,27 @@ def run_cnmf_ui(_):
 	#def cnmf_run(fname, cnmf_params):
 	print("Starting CNMF-E...")
 	print("Using patches") if is_patches else print("Single FOV")
-	A, C, b, f, YrA, sn, idx_components = cnmf_run(context.working_cnmf_file, cnmf_params)
+	print("Deconvolution: ON") if bool(deconv_flag_widget.value) else print("Deconvolution: OFF")
+	A, C, b, f, YrA, sn, idx_components, conv = cnmf_run(context.working_cnmf_file, cnmf_params)
 	print("Debugging (caiman_interface.py line 397 filter_rois): A.shape {0}, C.shape {1}, Yr.shape {2}, idx_components_orig {3}".format(A.shape,C.shape,Yr.shape,idx_components))
 	print("{}".format(type(A)))
 	'''    if not is_patches: #for some reason, need to convert to ndarray if doing Single FOV;
 	A = np.asarray(A) #make sure A is ndarray not matrix
 	C = np.asarray(C) #make sure C is ndarray not matrix'''
 	print("{}".format(type(A)))
-	context.cnmf_results = A, C, b, f, YrA, sn, idx_components
+	context.cnmf_results = A, C, b, f, YrA, sn, idx_components, conv
 	print("CNMF-E FINISHED!")
-	#results: A, C, b, f, YrA, sn, idx_components
+	#results: A, C, b, f, YrA, sn, idx_components, S
 	refine_results = True
+	save_movie_bool = bool(save_movie_widget.value)
 	if refine_results:
 		print("Automatically refining results...")
 		context.idx_components_keep, context.idx_components_toss = \
 			filter_rois(context.YrDT, context.cnmf_results, context.dview, gSig, gSiz)
 	#def corr_img(Yr, gSig, center_psr :bool):
 	#save denoised movie:
-	save_denoised_avi(context.cnmf_results, dims, context.idx_components_keep, context.working_dir)
+	if save_movie_bool:
+		save_denoised_avi(context.cnmf_results, dims, context.idx_components_keep, context.working_dir)
 run_cnmf_btn.on_click(run_cnmf_ui)
 major_cnmf_col = widgets.VBox()
 major_cnmf_col.children = [cnmf_file_box, cnmf_settings, run_cnmf_btn]
@@ -478,11 +501,17 @@ def show_cnmf_results_interface():
 	Yr, dims, T = context.YrDT
 	Yr_reshaped = np.rollaxis(np.reshape(Yr, dims + (T,), order='F'),2)
 	#interactive ROI refinement
-	A, C, b, f, YrA, sn, idx_components = context.cnmf_results
+	if len(context.cnmf_results) == 8: #for backward compatibility
+		A, C, b, f, YrA, sn, idx_components, conv = context.cnmf_results
+	else:
+		A, C, b, f, YrA, sn, idx_components = context.cnmf_results
+		conv = None
+	#A spatial matrix, C temporal matrix, S deconvolution results (if applicable)
+	#print("Mem Size A: {0}, Mem Size C: {1}".format(getsizeof(A), getsizeof(C)))
 	#setup scales
 	scale_x = bqplot.LinearScale(min=0.0, max=1) #for images
 	scale_y = bqplot.LinearScale(min=0.0, max=1) #for images
-	scale_x2 = bqplot.LinearScale(min=0.0, max=dims[1]) #eg 376  
+	scale_x2 = bqplot.LinearScale(min=0.0, max=dims[1]) #eg 376
 	scale_y2 = bqplot.LinearScale(min=0.0, max=dims[0]) #eg 240
 	#correlation plots
 	correlation_img = corr_img(Yr_reshaped, gSig, center_psf=True, plot=False)
@@ -555,8 +584,11 @@ def show_cnmf_results_interface():
 		y = dims[0]-[y['coordinates'][:,1] for y in contours][index]
 		return x,y
 
-	def get_signal(index):
-		return C[index]
+	def get_signal(index, deconv=False):
+		if not deconv:
+			return C[index], None
+		else:
+			return C[index], conv[index]
 
 	roi_slider = IntSlider(min=1, max=A.shape[1], step=1, description='ROI#', value=1)
 	#roi_slider.observe(slider_change)
@@ -566,7 +598,7 @@ def show_cnmf_results_interface():
 		else:
 			return 1
 
-	
+
 	contour_x,contour_y = get_contour_coords(0)
 	contour_mark = bqplot.Lines(x = contour_x, y = contour_y, colors=['yellow'], scales={'x': scale_x2, 'y': scale_y2})
 
@@ -586,14 +618,24 @@ def show_cnmf_results_interface():
 
 	# Fluorescence trace
 	scale_x4 = bqplot.LinearScale(min=0.0, max=C.shape[1])
-	init_signal = get_signal(roi_slider.value)
-	init_signal_max = init_signal.max()
+	deconv = True if conv is not None else False
+	init_signal = get_signal(roi_slider.value, deconv) #returns tuple (C, S) if deconv is True, else returns (C, None)
+	init_signal_max = init_signal[0].max()
+	#Deconvolved signal (if applicable)
+	init_deconv_signal_max = 0
+	if type(conv) == np.ndarray: #or deconv=True
+		init_deconv_signal_max = init_signal[1].max()
 	scale_y4 = bqplot.LinearScale(min=0.0, max=(1.10 * init_signal_max)) # add 10% to give some upper margin
-	signal_mark = bqplot.Lines(x = np.arange(C.shape[1]), y = init_signal, colors=['black'], 
+	signal_mark = bqplot.Lines(x = np.arange(C.shape[1]), y = init_signal[0], colors=['black'],
 							   scales={'x': scale_x4, 'y': scale_y4}, display_legend=True)
-	fig4 = bqplot.Figure(padding_x=0, padding_y=0, title='Denoised/Demixed Fluorescence Trace', 
+	deconv_signal_mark = bqplot.Lines(x = np.arange(C.shape[1]), colors=['red'],
+							  scales={'x': scale_x4, 'y': scale_y4}, display_legend=True)
+	if init_signal[1] is not None:
+		deconv_signal_mark.y = init_signal[1]
+
+	fig4 = bqplot.Figure(padding_x=0, padding_y=0, title='Denoised/Demixed Fluorescence Trace',
 						 background_style={'background-color':'white'})
-	fig4.marks = [signal_mark]
+	fig4.marks = [signal_mark, deconv_signal_mark]
 	fig4.axes = [bqplot.Axis(scale=scale_x4, label='Time (Frame #)',grid_lines='none'), bqplot.Axis(scale=scale_y4, orientation='vertical',label='Amplitude',grid_lines='none')]
 	tb0 = Toolbar(figure=fig4)
 
@@ -651,25 +693,27 @@ def show_cnmf_results_interface():
 		df.index += 1
 		deld_rois = list(map(lambda x: x-1, deld_rois_)) #remove ROIs that the user wants to exclude
 		df.drop(df.index[deld_rois], inplace=True)
-		
+
 		df.to_csv(traces_path, header=False)
 		print("Data saved to: %s" % (traces_path))
-		
+
 	def slider_change(change):
 		contour_mark.x,contour_mark.y = get_contour_coords(change-1)
 		roi_image_mark.image = widgets.Image(value=get_roi_image(A,(change-1),dims))
 		new_signal = get_signal(change-1)
-		signal_mark.y = new_signal
-		new_signal_max = new_signal.max()
+		signal_mark.y = new_signal[0]
+		new_signal_max = new_signal[0].max()
+		if new_signal[1] is not None:
+			deconv_signal_mark.y = new_signal[1]
 		scale_y4.max = new_signal_max + 0.10*new_signal_max
 		return [change-1]
-		
+
 	download_btn.on_click(download_data_func)
 	delete_roi_btn.on_click(delete_roi_func)
 	l2 = traitlets.directional_link((rois, 'selected'),(roi_slider, 'value'), roi_change)
 	l1 = traitlets.directional_link((roi_slider, 'value'), (rois, 'selected'), slider_change)
 
-	view_cnmf_widget = VBox([VBox([HBox([roi_slider, tb0]), HBox([delete_roi_btn, delete_list_widget, dff_chk, download_btn])]), 
+	view_cnmf_widget = VBox([VBox([HBox([roi_slider, tb0]), HBox([delete_roi_btn, delete_list_widget, dff_chk, download_btn])]),
 		  HBox([fig, fig4]), HBox([fig2, fig3])])
 
 	return view_cnmf_widget
@@ -708,17 +752,19 @@ view_results_col.children = [view_cnmf_results_widget]
 '''    mc_params = { #for processing individual movie at a time using MotionCorrect class object
 	'dview': dview, #refers to ipyparallel object for parallelism
 	'max_shifts':(2, 2),  # maximum allow rigid shift; default (2,2)
-	'niter_rig':1, 
+	'niter_rig':1,
 	'splits_rig':20,
 	'num_splits_to_process_rig':None,
 	'strides':(24,24), #default 48,48
 	'overlaps':(12,12), #default 12,12
 	'splits_els':28,
 	'num_splits_to_process_els':[14, None],
-	'upsample_factor_grid':4, 
+	'upsample_factor_grid':4,
 	'max_deviation_rigid':2,
-	'shifts_opencv':True, 
+	'shifts_opencv':True,
 	'nonneg_movie':True,
 	'gSig_filt' : [int(x) for x in gSigFilter.value.split(',')] #default 9,9  best 6,6,
 	'dsfactors': None #or (1,1,1)   (ds x, ds y, ds t)
 }'''
+from event_logic import *
+setup_context(context)

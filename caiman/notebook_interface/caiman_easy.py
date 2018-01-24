@@ -32,6 +32,7 @@ import ipywidgets as widgets
 #import select_file as sf_
 from typing import Dict, Tuple, List
 import datetime
+from sys import getsizeof
 
 #from ..summary_images import local_correlations
 
@@ -71,7 +72,7 @@ class Context: #used to save data related to analysis (not serializable)
 		self.mc_nonrig = [] #non-rigid mc results
 
 		self.YrDT = None # tuple (Yr, dims, T), Yr: numpy array (memmory mapped file)
-		self.cnmf_results = [] #A, C, b, f, YrA, sn, idx_components
+		self.cnmf_results = [] #A, C, b, f, YrA, sn, idx_components, S
 		self.idx_components_keep = []  #result after filter_rois()
 		self.idx_components_toss = []
 		#rest of properties
@@ -85,7 +86,7 @@ class Context: #used to save data related to analysis (not serializable)
 			'working_cnmf_file':self.working_cnmf_file,
 			'mc_rig':self.mc_rig,
 			'mc_nonrig':self.mc_nonrig,
-			'YrDT':self.YrDT, 
+			'YrDT':self.YrDT,
 			'cnmf_results':self.cnmf_results,
 			'cnmf_idx_components_keep':self.cnmf_idx_components_keep,
 			'cnmf_idx_components_toss':self.cnmf_idx_components_toss,
@@ -104,7 +105,7 @@ class Context: #used to save data related to analysis (not serializable)
 			self.working_cnmf_file,
 			self.mc_rig,
 			self.mc_nonrig,
-			self.YrDT, 
+			self.YrDT,
 			self.cnmf_results,
 			self.idx_components_keep,
 			self.idx_components_toss,
@@ -197,7 +198,7 @@ def run_mc(fnames, mc_params, dsfactors, rigid=True, batch=True):
 			#min_mov = cm.load(tiff_file, subindices=range(400)).min()
 			print("Min Mov: ", min_mov)
 			print("Motion correcting: " + tiff_file)
-			
+
 	# TODO: needinfo how the classes works
 		new_templ = None
 		mc_mov = None
@@ -283,16 +284,18 @@ def cnmf_run(fname: str, cnmf_params: Dict): #fname is a full path, mmap file
 	cnm = cnmf.CNMF(**cnmf_params)
 	cnm.fit(Yr)
 	#get results
-	A, C, b, f, YrA, sn = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn
+	A, C, b, f, YrA, sn, conv = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.OASISinstances
+	print("(Sparse) Mem Size A: {0}, Mem Size C: {1}".format(getsizeof(A), getsizeof(C)))
+	print("(Dense) Mem Size A: {0}, Mem Size C: {1}".format(np.asarray(A).nbytes, np.asarray(A).nbytes))
 	idx_components = np.arange(A.shape[-1])
 	clean_up() #remove log files
-	return A, C, b, f, YrA, sn, idx_components
+	return A, C, b, f, YrA, sn, idx_components, conv
 
 
 def plot_contours(YrDT: Tuple, cnmf_results: Tuple, cn_filter):
 	Yr, dims, T = YrDT
 	Yr = np.rollaxis(np.reshape(Yr, dims + (T,), order='F'), 2)
-	A, C, b, f, YrA, sn, idx_components = cnmf_results
+	A, C, b, f, YrA, sn, idx_components, conv = cnmf_results
 	pl.figure()
 	crd = cm.utils.visualization.plot_contours(A.tocsc()[:, idx_components], cn_filter, thr=.9)
 	'''
@@ -306,7 +309,7 @@ def plot_contours(YrDT: Tuple, cnmf_results: Tuple, cn_filter):
 
 def filter_rois(YrDT: Tuple, cnmf_results: Tuple, dview, gSig, gSiz):
 	Yr, dims, T = YrDT
-	A, C, b, f, YrA, sn, idx_components_orig = cnmf_results
+	A, C, b, f, YrA, sn, idx_components_orig, conv = cnmf_results
 	final_frate = 20# approx final rate  (after eventual downsampling )
 	Npeaks = 10
 	traces = None
@@ -329,8 +332,8 @@ def filter_rois(YrDT: Tuple, cnmf_results: Tuple, dview, gSig, gSiz):
 						Y, traces, A, C, b, f, final_frate, remove_baseline=True, N=5, robust_std=False, Athresh=0.1, Npeaks=Npeaks,  thresh_C=0.3)
 				'''	# %% DISCARD LOW QUALITY COMPONENTS
 	idx_components, idx_components_bad, comp_SNR, r_values, pred_CNN = estimate_components_quality_auto(
-                            Y, A, C, b, f, YrA, final_frate, 
-                            decay_time, gSig, dims, dview = dview, 
+                            Y, A, C, b, f, YrA, final_frate,
+                            decay_time, gSig, dims, dview = dview,
                             min_SNR=min_SNR, r_values_min = r_values_min, min_std_reject = 0.5, use_cnn = False)
 	'''	idx_components_r = np.where(r_values >= .5)[0]
 	idx_components_raw = np.where(fitness_raw < -40)[0]
