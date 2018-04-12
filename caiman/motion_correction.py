@@ -429,8 +429,7 @@ def motion_correct_oneP_rigid(
 
     max_shifts: tuple of ints
         max shifts in x and y allowed
-
-
+        
     dview:
         handle to cluster
 
@@ -2545,6 +2544,10 @@ def tile_and_correct_wrapper(params):
             imgs = imread(img_name, key=idxs)
         mc = np.zeros(imgs.shape, dtype=np.float32)
         shift_info = []
+    elif extension == '.avi':
+        imgs = cm.base.movies.aviread(img_name, idxs)
+        mc = np.zeros(imgs.shape, dtype=np.float32)
+        shift_info = []
     elif extension == '.sbx':  # check if sbx file
         imgs = cm.base.movies.sbxread(name, idxs[0], len(idxs))
         mc = np.zeros(imgs.shape, dtype=np.float32)
@@ -2603,6 +2606,9 @@ def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0
                 d1, d2 = tf[0].shape
                 T = len(tf)
 
+    if extension == '.avi':  
+        T, d1, d2 = cm.base.movies.avisize(fname)
+
     elif extension == '.sbx':  # check if sbx file
 
         shape = cm.base.movies.sbxshape(name)
@@ -2626,6 +2632,7 @@ def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0
                     'Unsupported file key for for h5 files in parallel motion correction')
     else:
         raise Exception(
+
             'Unsupported file extension for parallel motion correction')
 
     if type(splits) is int:

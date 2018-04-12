@@ -1011,6 +1011,43 @@ class movie(ts.timeseries):
         return movie(np.concatenate([self[j:j + window, :, :].local_correlations(
             eight_neighbours=True)[np.newaxis, :, :] for j in range(T - window)], axis=0), fr=self.fr)
 
+    def save_movie(self, file, gain=1, fr=None, magnification=1, offset=0, n_frames=None, interpolation=cv2.INTER_LINEAR):
+        
+        gain *= 1.
+        maxmov = np.nanmax(self)
+        
+        if fr is None:
+            fr = self.fr
+
+        fourcc = cv2.VideoWriter_fourcc(*"H264")
+        writer = None
+        
+        if n_frames is None:
+            n_frames = self.shape[0]
+        
+        print("Writing movie...")
+        for i, frame in enumerate(self):
+            
+            if i >= n_frames:
+                break
+            
+            if magnification != 1:
+                frame = cv2.resize(
+                    frame, None, fx=magnification, fy=magnification, interpolation=interpolation)
+                
+            if writer is None:
+                writer = cv2.VideoWriter(file, fourcc, fr, (frame.shape[1], frame.shape[0]), False)
+                if not writer.isOpened():
+                    print("Failed to open video writer.")
+                    return
+            
+            frame = (255 * ((offset + frame) * gain / maxmov))
+            frame = np.clip(frame, 0, 255)
+            writer.write(frame.astype('uint8') )
+        
+        writer.release()
+        print("Done.")
+        
     def play(self, gain=1, fr=None, magnification=1, offset=0, interpolation=cv2.INTER_LINEAR,
              backend='opencv', do_loop=False, bord_px=None):
         """
@@ -1031,6 +1068,7 @@ class movie(ts.timeseries):
         # todo: todocument
         if backend == 'pylab':
             print('*** WARNING *** SPEED MIGHT BE LOW. USE opencv backend if available')
+
 
         gain *= 1.
         maxmov = np.nanmax(self)
@@ -1079,7 +1117,7 @@ class movie(ts.timeseries):
                     if magnification != 1:
                         frame = cv2.resize(
                             frame, None, fx=magnification, fy=magnification, interpolation=interpolation)
-
+                        
                     cv2.imshow('frame', (offset + frame) * gain / maxmov)
                     if cv2.waitKey(int(1. / fr * 1000)) & 0xFF == ord('q'):
                         looping = False
@@ -1157,7 +1195,6 @@ def load(file_name,fr=30,start_time=0,meta_data=None,subindices=None,shape=None,
     -----
     Exception('Subindices not implemented')
 
-    Exception('Subindices not implemented')
 
     Exception("sima module unavailable")
 
@@ -1199,32 +1236,8 @@ def load(file_name,fr=30,start_time=0,meta_data=None,subindices=None,shape=None,
             input_arr = np.squeeze(input_arr)
 
         elif extension == '.avi':  # load avi file
-            if subindices is not None:
-                raise Exception('Subindices not implemented')
-            cap = cv2.VideoCapture(file_name)
-            try:
-                length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            except:
-                print('Roll back top opencv 2')
-                length = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-                width = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
-
-            input_arr = np.zeros((length, height, width), dtype=np.uint8)
-            counter = 0
-            while True:
-                # Capture frame-by-frame
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                input_arr[counter] = frame[:, :, 0]
-                counter = counter + 1
-
-            # When everything done, release the capture
-            cap.release()
-            cv2.destroyAllWindows()
+            
+            input_arr = aviread(file_name, subindices)
 
         elif extension == '.npy':  # load npy file
             if fr is None:
@@ -1442,6 +1455,84 @@ def _todict(matobj):
             dict[strg] = elem
     return dict
 
+
+def avisize(filename):
+    
+    # HACKED HARDCODED 2D downsample!!!!
+    cap = cv2.VideoCapture(filename)
+    length = 0
+    width = 0
+    height = 0
+    try:
+        length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
+    except:
+        print('Roll back top opencv 2')
+        length = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)/2)
+        height = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)/2)
+    
+    
+    cap.release()
+    
+    return length, height, width
+    
+
+def aviread(filename, subindices=None):
+    
+    # HACKED HARDCODED 2D downsample!!!!
+    cap = cv2.VideoCapture(filename)
+    length = None
+    width = None
+    height = None
+    try:
+        length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
+    except:
+        print('Roll back top opencv 2')
+        length = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)/2)
+        height = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)/2)
+        
+    indices = [*range(0, length)]
+    
+    # WTF? This fucking terrible
+    if subindices is not None:
+        if type(subindices) is list and len(subindices) == 3:
+            indices = list(range(subindices[0], subindices[1], subindices[2]))
+        elif type(subindices) is slice:
+            indices = indices[subindices]
+        elif type(subindices) is range:
+            indices = list(subindices)
+        else:
+            indices = subindices
+            
+    
+    input_arr = np.zeros((len(indices), height, width), dtype=np.uint8) 
+    all_idx = range(0, length)
+    sub_idx = 0
+    
+    for c in all_idx:
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        
+        if c == indices[sub_idx]:
+            blr = cv2.GaussianBlur(frame[:, :, 0], (3, 3), 0.5)
+            input_arr[sub_idx] = cv2.resize(blr, (width, height))
+            #input_arr[sub_idx] = frame[:, :, 0]
+            sub_idx += 1
+        
+        if sub_idx == len(indices):
+            break
+
+
+    # When everything done, release the capture
+    cap.release()
+
+    return input_arr
+    
 
 def sbxread(filename, k=0, n_frames=np.inf):
     """
