@@ -142,7 +142,7 @@ class MotionCorrect(object):
 
     def __init__(self, fname, min_mov, dview=None, max_shifts=(6, 6), niter_rig=1, splits_rig=14, num_splits_to_process_rig=None,
                  strides=(96, 96), overlaps=(32, 32), splits_els=14, num_splits_to_process_els=[7, None],
-                 upsample_factor_grid=4, max_deviation_rigid=3, shifts_opencv=True, nonneg_movie=False, gSig_filt=None):
+                 upsample_factor_grid=4, max_deviation_rigid=3, shifts_opencv=True, nonneg_movie=False, gSig_filt=None, downsample=None):
         """
         Constructor class for motion correction operations
 
@@ -166,6 +166,7 @@ class MotionCorrect(object):
         self.min_mov = min_mov
         self.nonneg_movie = nonneg_movie
         self.gSig_filt = gSig_filt
+        self.downsample = downsample
 
 
 
@@ -215,7 +216,8 @@ class MotionCorrect(object):
                 save_movie_rigid=save_movie,
                 add_to_movie=-self.min_mov,
                 nonneg_movie=self.nonneg_movie,
-                gSig_filt=self.gSig_filt)
+                gSig_filt=self.gSig_filt,
+                downsample=self.downsample)
 
             self.total_template_rig = _total_template_rig
             self.templates_rig += _templates_rig
@@ -419,7 +421,8 @@ def motion_correct_oneP_rigid(
         max_shifts,
         dview=None,
         splits_rig=10,
-        save_movie=True):
+        save_movie=True,
+        downsample=None):
     ''' Perform rigid motion correction on one photon imaging movies
     filename: str
         name of the file to correct
@@ -445,7 +448,7 @@ def motion_correct_oneP_rigid(
     Motion correction object
     '''
     min_mov = np.array([cm.motion_correction.low_pass_filter_space(
-        m_, gSig_filt) for m_ in cm.load(filename[0], subindices=range(400))]).min()
+        m_, gSig_filt) for m_ in cm.load(filename[0], subindices=range(400), downsample=downsample)]).min()
     new_templ = None
 
     # TODO: needinfo how the classes works
@@ -459,7 +462,9 @@ def motion_correct_oneP_rigid(
         num_splits_to_process_rig=None,
         shifts_opencv=True,
         nonneg_movie=True,
-        gSig_filt=gSig_filt)
+        gSig_filt=gSig_filt, 
+        downsample=downsample
+        )
 
     mc.motion_correct_rigid(save_movie=save_movie, template=new_templ)
 
@@ -479,7 +484,8 @@ def motion_correct_oneP_nonrigid(
         dview=None,
         splits_rig=10,
         save_movie=True,
-        new_templ=None):
+        new_templ=None,
+        downsample=None):
     ''' Perform rigid motion correction on one photon imaging movies
     filename: str
         name of the file to correct
@@ -507,7 +513,7 @@ def motion_correct_oneP_nonrigid(
     '''
     if new_templ is None:
         min_mov = np.array([cm.motion_correction.low_pass_filter_space(
-            m_, gSig_filt) for m_ in cm.load(filename, subindices=range(400))]).min()
+            m_, gSig_filt) for m_ in cm.load(filename, subindices=range(400), downsample=downsample)]).min()
     else:
         min_mov = np.min(new_templ)
 
@@ -527,7 +533,8 @@ def motion_correct_oneP_nonrigid(
         overlaps=overlaps,
         splits_els=splits_els,
         upsample_factor_grid=upsample_factor_grid,
-        max_deviation_rigid=max_deviation_rigid)
+        max_deviation_rigid=max_deviation_rigid,
+        downsample=downsample)
 
     mc.motion_correct_pwrigid(save_movie=True, template=new_templ)
 
@@ -2292,7 +2299,7 @@ def compute_metrics_motion_correction(fname, final_size_x, final_size_y, swap_di
 #%%
 def motion_correct_batch_rigid(fname, max_shifts, dview=None, splits=56, num_splits_to_process=None, num_iter=1,
                                template=None, shifts_opencv=False, save_movie_rigid=False, add_to_movie=None,
-                               nonneg_movie=False, gSig_filt=None, subidx=slice(None, None, 1)):
+                               nonneg_movie=False, gSig_filt=None, subidx=slice(None, None, 1), downsample=None):
     """
     Function that perform memory efficient hyper parallelized rigid motion corrections while also saving a memory mappable file
 
@@ -2346,16 +2353,16 @@ def motion_correct_batch_rigid(fname, max_shifts, dview=None, splits=56, num_spl
 
     """
     corrected_slicer = slice(subidx.start, subidx.stop, subidx.step * 10)
-    m = cm.load(fname, subindices=corrected_slicer)
+    m = cm.load(fname, subindices=corrected_slicer, downsample=downsample)
 
     if m.shape[0] < 300:
-        m = cm.load(fname, subindices=corrected_slicer)
+        m = cm.load(fname, subindices=corrected_slicer, downsample=downsample)
     elif m.shape[0] < 500:
         corrected_slicer = slice(subidx.start, subidx.stop, subidx.step * 5)
-        m = cm.load(fname, subindices=corrected_slicer)
+        m = cm.load(fname, subindices=corrected_slicer, downsample=downsample)
     else:
         corrected_slicer = slice(subidx.start, subidx.stop, subidx.step * 30)
-        m = cm.load(fname, subindices=corrected_slicer)
+        m = cm.load(fname, subindices=corrected_slicer, downsample=downsample)
 
     if template is None:
         if gSig_filt is not None:
@@ -2388,7 +2395,8 @@ def motion_correct_batch_rigid(fname, max_shifts, dview=None, splits=56, num_spl
                                                              add_to_movie=add_to_movie, template=old_templ, max_shifts=max_shifts, max_deviation_rigid=0,
                                                              dview=dview, save_movie=save_movie, base_name=os.path.split(
                                                                  fname)[-1][:-4] + '_rig_', subidx = subidx,
-                                                             num_splits=num_splits_to_process, shifts_opencv=shifts_opencv, nonneg_movie=nonneg_movie, gSig_filt=gSig_filt)
+                                                             num_splits=num_splits_to_process, shifts_opencv=shifts_opencv, nonneg_movie=nonneg_movie, gSig_filt=gSig_filt,
+                                                             downsample=downsample)
 
         new_templ = np.nanmedian(np.dstack([r[-1] for r in res_rig]), -1)
         if gSig_filt is not None:
@@ -2533,7 +2541,7 @@ def tile_and_correct_wrapper(params):
 
     img_name, out_fname, idxs, shape_mov, template, strides, overlaps, max_shifts,\
         add_to_movie, max_deviation_rigid, upsample_factor_grid, newoverlaps, newstrides, \
-        shifts_opencv, nonneg_movie, gSig_filt, is_fiji = params
+        shifts_opencv, nonneg_movie, gSig_filt, is_fiji, downsample = params
 
     name, extension = os.path.splitext(img_name)[:2]
 
@@ -2545,7 +2553,7 @@ def tile_and_correct_wrapper(params):
         mc = np.zeros(imgs.shape, dtype=np.float32)
         shift_info = []
     elif extension == '.avi':
-        imgs = cm.base.movies.aviread(img_name, idxs)
+        imgs = cm.base.movies.aviread(img_name, idxs, downsample)
         mc = np.zeros(imgs.shape, dtype=np.float32)
         shift_info = []
     elif extension == '.sbx':  # check if sbx file
@@ -2589,7 +2597,7 @@ def tile_and_correct_wrapper(params):
 def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0, template=None,
                                 max_shifts=(12, 12), max_deviation_rigid=3, newoverlaps=None, newstrides=None,
                                 upsample_factor_grid=4, order='F', dview=None, save_movie=True,
-                                base_name=None, subidx = None, num_splits=None, shifts_opencv=False, nonneg_movie=False, gSig_filt=None):
+                                base_name=None, subidx = None, num_splits=None, shifts_opencv=False, nonneg_movie=False, gSig_filt=None, downsample=None):
     """
 
     """
@@ -2607,7 +2615,7 @@ def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0
                 T = len(tf)
 
     if extension == '.avi':  
-        T, d1, d2 = cm.base.movies.avisize(fname)
+        T, d1, d2 = cm.base.movies.avisize(fname, downsample)
 
     elif extension == '.sbx':  # check if sbx file
 
@@ -2671,7 +2679,7 @@ def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0
     for idx in idxs:
         pars.append([fname, fname_tot, idx, shape_mov, template, strides, overlaps, max_shifts, np.array(
             add_to_movie, dtype=np.float32), max_deviation_rigid, upsample_factor_grid,
-            newoverlaps, newstrides, shifts_opencv, nonneg_movie, gSig_filt, is_fiji])
+            newoverlaps, newstrides, shifts_opencv, nonneg_movie, gSig_filt, is_fiji, downsample])
 
     if dview is not None:
         print('** Startting parallel motion correction **')

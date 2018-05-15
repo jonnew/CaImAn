@@ -1157,7 +1157,7 @@ class movie(ts.timeseries):
 
 
 
-def load(file_name,fr=30,start_time=0,meta_data=None,subindices=None,shape=None, var_name_hdf5 = 'mov', in_memory = False, is_behavior = False, bottom=0, top=0, left=0, right=0, channel = None):
+def load(file_name,fr=30,start_time=0,meta_data=None,subindices=None,shape=None, var_name_hdf5 = 'mov', in_memory = False, is_behavior = False, bottom=0, top=0, left=0, right=0, channel = None, downsample = None):
     """
     load movie from file. SUpports a variety of formats. tif, hdf5, npy and memory mapped. Matlab is experimental.
 
@@ -1237,7 +1237,10 @@ def load(file_name,fr=30,start_time=0,meta_data=None,subindices=None,shape=None,
 
         elif extension == '.avi':  # load avi file
             
-            input_arr = aviread(file_name, subindices)
+            if downsample is None:
+                input_arr = aviread(file_name, subindices)
+            else:
+                input_arr = aviread(file_name, subindices, downsample)
 
         elif extension == '.npy':  # load npy file
             if fr is None:
@@ -1456,7 +1459,7 @@ def _todict(matobj):
     return dict
 
 
-def avisize(filename):
+def avisize(filename, downsample=1):
     
     # HACKED HARDCODED 2D downsample!!!!
     cap = cv2.VideoCapture(filename)
@@ -1465,13 +1468,13 @@ def avisize(filename):
     height = 0
     try:
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/downsample)
     except:
         print('Roll back top opencv 2')
-        length = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)/2)
-        height = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)/2)
+        length = int(cap.get(cv2.CV_CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CV_CAP_PROP_FRAME_WIDTH)/downsample)
+        height = int(cap.get(cv2.CV_CAP_PROP_FRAME_HEIGHT)/downsample)
     
     
     cap.release()
@@ -1479,22 +1482,21 @@ def avisize(filename):
     return length, height, width
     
 
-def aviread(filename, subindices=None):
+def aviread(filename, subindices=None, downsample=1):
     
-    # HACKED HARDCODED 2D downsample!!!!
     cap = cv2.VideoCapture(filename)
     length = None
     width = None
     height = None
     try:
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/downsample)
     except:
         print('Roll back top opencv 2')
-        length = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)/2)
-        height = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)/2)
+        length = int(cap.get(cv2.CV_CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CV_CAP_PROP_FRAME_WIDTH)/downsample)
+        height = int(cap.get(cv2.CV_CAP_PROP_FRAME_HEIGHT)/downsample)
         
     indices = [*range(0, length)]
     
@@ -1509,7 +1511,6 @@ def aviread(filename, subindices=None):
         else:
             indices = subindices
             
-    
     input_arr = np.zeros((len(indices), height, width), dtype=np.uint8) 
     all_idx = range(0, length)
     sub_idx = 0
