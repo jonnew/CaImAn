@@ -1466,6 +1466,7 @@ def avisize(filename, downsample=1):
     length = 0
     width = 0
     height = 0
+
     try:
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)
@@ -1488,6 +1489,7 @@ def aviread(filename, subindices=None, downsample=1):
     length = None
     width = None
     height = None
+    
     try:
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)/downsample)

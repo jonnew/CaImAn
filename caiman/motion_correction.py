@@ -142,13 +142,13 @@ class MotionCorrect(object):
 
     def __init__(self, fname, min_mov, dview=None, max_shifts=(6, 6), niter_rig=1, splits_rig=14, num_splits_to_process_rig=None,
                  strides=(96, 96), overlaps=(32, 32), splits_els=14, num_splits_to_process_els=[7, None],
-                 upsample_factor_grid=4, max_deviation_rigid=3, shifts_opencv=True, nonneg_movie=False, gSig_filt=None, downsample=None):
+                 upsample_factor_grid=4, max_deviation_rigid=3, shifts_opencv=True, nonneg_movie=False, gSig_filt=None, downsample=1):
         """
         Constructor class for motion correction operations
 
         """
         if type(fname) is not list:
-            fname = [fname]
+            fname = [fname] 
             
         self.fname=fname
         self.dview=dview
@@ -422,7 +422,7 @@ def motion_correct_oneP_rigid(
         dview=None,
         splits_rig=10,
         save_movie=True,
-        downsample=None):
+        downsample=1):
     ''' Perform rigid motion correction on one photon imaging movies
     filename: str
         name of the file to correct
@@ -485,7 +485,7 @@ def motion_correct_oneP_nonrigid(
         splits_rig=10,
         save_movie=True,
         new_templ=None,
-        downsample=None):
+        downsample=1):
     ''' Perform rigid motion correction on one photon imaging movies
     filename: str
         name of the file to correct
@@ -2299,7 +2299,7 @@ def compute_metrics_motion_correction(fname, final_size_x, final_size_y, swap_di
 #%%
 def motion_correct_batch_rigid(fname, max_shifts, dview=None, splits=56, num_splits_to_process=None, num_iter=1,
                                template=None, shifts_opencv=False, save_movie_rigid=False, add_to_movie=None,
-                               nonneg_movie=False, gSig_filt=None, subidx=slice(None, None, 1), downsample=None):
+                               nonneg_movie=False, gSig_filt=None, subidx=slice(None, None, 1), downsample=1):
     """
     Function that perform memory efficient hyper parallelized rigid motion corrections while also saving a memory mappable file
 
@@ -2597,7 +2597,7 @@ def tile_and_correct_wrapper(params):
 def motion_correction_piecewise(fname, splits, strides, overlaps, add_to_movie=0, template=None,
                                 max_shifts=(12, 12), max_deviation_rigid=3, newoverlaps=None, newstrides=None,
                                 upsample_factor_grid=4, order='F', dview=None, save_movie=True,
-                                base_name=None, subidx = None, num_splits=None, shifts_opencv=False, nonneg_movie=False, gSig_filt=None, downsample=None):
+                                base_name=None, subidx = None, num_splits=None, shifts_opencv=False, nonneg_movie=False, gSig_filt=None, downsample=1):
     """
 
     """
